@@ -9,6 +9,7 @@ use super::CudaMemCopyKind;
 // Rustnomicon uses it when describing how to implement Vec yourself, but I'm afraid that when Unique
 // gets dropped, the host allocator might try to drop its memory, which might result in a seg fault 
 // because the drop function would think it's on the heap, but it's on the CUDA device
+#[derive(Debug)]
 pub struct CudaVec<T: Sized> {
 	ptr: *mut T,
 	cap: usize,
@@ -21,29 +22,71 @@ impl<T: Sized> CudaVec<T> {
 		Self{ ptr: 0 as *mut T, cap:0, len:0 }
 	}
 
-	/*pub fn new(x:T) -> Result<Self, &'static str> {
-		let mut ptr:usize = 0;
-		let src_ptr:*const T = &x;
-		unsafe { 
-			if super::cudaMalloc(&mut ptr, std::mem::size_of::<T>()) != 0 {
-				return Err("Failure to allocate memory on device");
+	pub fn set_capacity(&mut self, cap:usize) -> Result<(), &'static str> {
+
+		if cap == self.cap { return Ok(()); } 		// Nothing to do
+
+		if cap > 0 {
+			// The requested capacity is nonzero, so we'll need to allocate new memory.  Even if we're reducing the capacity, we still
+			// want to do this because it'll free up memory that we aren't using so someone else can use it
+
+			// Allocate new memory
+			let mut new_ptr:usize = 0;
+			let new_byte_count:usize = std::mem::size_of::<T>() * cap;
+			unsafe {
+				if super::cudaMalloc(&mut new_ptr, new_byte_count) != 0 {
+					return Err("Failure to allocate memory on device");
+				}
+				eprintln!("Allocated {} bytes in CudaVec(0x{:X})", new_byte_count, new_ptr as usize);
 			}
-			eprintln!("Allocated CudaBox(0x{:X}) with {} bytes", ptr as usize, std::mem::size_of::<T>());
 
-			eprintln!("Copying from 0x{:X} to CudaBox(0x{:X})", src_ptr as usize, ptr);
-			if super::cudaMemcpy(ptr as *mut u8, src_ptr as *const _, std::mem::size_of::<T>(), CudaMemCopyKind::HostToDevice) != 0 {
-				return Err("Failure to copy memory to device");
-			}	
+			if self.len > 0 {
+				// We've got old data to copy before we free the old memory
+				unsafe { 
 
+					eprintln!("Copying from CudaVec's old allocation at 0x{:X} to its new allocation at 0x{:X}", self.ptr as usize, new_ptr);
+					if super::cudaMemcpy(new_ptr as *mut u8, self.ptr as *mut u8, std::mem::size_of::<T>() * self.len, CudaMemCopyKind::DeviceToDevice) != 0 {
+						return Err("Failure to copy memory within device");
+					}	
+
+				}
+
+			} else {
+				// There's no old data to copy before we free the old memory.  If the length is zero, the capacity should
+				// always be zero too
+				assert!(self.cap == 0);
+			}
+
+			// Whether we copied old data into the new allocation or not, we're ready to free the old allocation, if applicable
+			// Note that `self.cap` is the old capacity and `cap` is the new capacity 
+			if self.cap > 0 {
+				// Since the previous capacity was nonzero, we've got memory to free
+				eprintln!("Dropping old CudaVec allocation at 0x{:X}", self.ptr as usize);
+				unsafe { super::cudaFree(self.ptr as size_t); }
+			}
+
+			self.ptr = new_ptr as *mut T;
+			self.cap = cap;
+			// Length remains unchanged
+
+		} else {
+			// The requested capacity is zero, so there's no need to allocate new memory; just drop the old memory
+			// if applicable and set the length and capacity to zero
+			if self.cap > 0 {
+				// Since the previous capacity was nonzero, we've got memory to free
+				eprintln!("Dropping old CudaVec allocation at 0x{:X}", self.ptr as usize);
+				unsafe { super::cudaFree(self.ptr as size_t); }
+			}
+
+			self.cap = 0;
+			self.len = 0;
 		}
 
-		eprintln!("Explicitly dropping value at 0x{:X}", &x as *const T as usize);
-		std::mem::drop(x);
 
-		Ok(Self{ ptr: ptr as *mut T })
+		Ok(())
 	}
 
-	pub fn to_host(self) -> Box<T> {
+	/*pub fn to_host(self) -> Box<T> {
 		let layout = Layout::new::<T>();
 		unsafe {
 			let dst:*mut u8 = alloc(layout);
