@@ -2,6 +2,7 @@
 use libc::size_t;
 
 pub mod cuda_box;
+pub mod cuda_vec;
 
 #[repr(C)]
 pub enum CudaMemCopyKind {
