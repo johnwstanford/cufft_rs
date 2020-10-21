@@ -77,7 +77,7 @@ impl<T: Sized + Clone> CudaVec<T> {
 
 			unsafe {
 				super::cudaMalloc(&mut new_ptr, new_byte_count).ok()?;
-				eprintln!("Allocated {} bytes in CudaVec(0x{:X})", new_byte_count, new_ptr as usize);
+				// eprintln!("Allocated {} bytes in CudaVec(0x{:X})", new_byte_count, new_ptr as usize);
 			}
 
 			if self.len > 0 {
@@ -89,7 +89,7 @@ impl<T: Sized + Clone> CudaVec<T> {
 				// We've got old data to copy before we free the old memory
 				unsafe { 
 
-					eprintln!("Copying from CudaVec's old allocation at 0x{:X} to its new allocation at 0x{:X}", self.ptr as usize, new_ptr);
+					// eprintln!("Copying from CudaVec's old allocation at 0x{:X} to its new allocation at 0x{:X}", self.ptr as usize, new_ptr);
 					super::cudaMemcpy(new_ptr as *mut u8, self.ptr as *mut u8, std::mem::size_of::<T>() * self.len, CudaMemCopyKind::DeviceToDevice).ok()?;	
 
 				}
@@ -100,7 +100,7 @@ impl<T: Sized + Clone> CudaVec<T> {
 			// Note that `self.cap` is the old capacity and `cap` is the new capacity 
 			if self.cap > 0 {
 				// Since the previous capacity was nonzero, we've got memory to free
-				eprintln!("Dropping old CudaVec allocation at 0x{:X}", self.ptr as usize);
+				// eprintln!("Dropping old CudaVec allocation at 0x{:X}", self.ptr as usize);
 				unsafe { super::cudaFree(self.ptr as size_t); }
 			}
 
@@ -124,12 +124,21 @@ impl<T: Sized + Clone> CudaVec<T> {
 		Ok(())
 	}
 
+	pub unsafe fn set_len(&mut self, new_len:usize) -> Result<(), &'static str> {
+		if new_len < self.cap { 
+			Err("Tried to set length longer than capacity") 
+		} else {
+			self.len = new_len;
+			Ok(())
+		}
+	}
+
 }
 
 impl<T: Sized + Clone> std::ops::Drop for CudaVec<T> {
 
 	fn drop(&mut self) {
-		eprintln!("Dropping CudaVec(0x{:X})", self.ptr as usize);
+		// eprintln!("Dropping CudaVec(0x{:X})", self.ptr as usize);
 		unsafe { super::cudaFree(self.ptr as size_t); }
 	}
 

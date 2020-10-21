@@ -6,6 +6,8 @@ pub mod runtime;
 #[cfg(test)]
 mod tests;
 
+use runtime::cuda_vec::CudaVec;
+
 #[repr(C)]
 pub struct CError(i32);
 
@@ -23,6 +25,9 @@ extern {
 
     fn cufftPlanMany(plan:&mut size_t, rank:i32, n:&i32, inembed:&i32, istride:i32, idist:i32,
         onembed:&i32, ostride:i32, odist:i32, fft_type:cufftType_t, batch:i32) -> cufftResult_t;
+
+	fn cufftExecZ2Z(plan:size_t, idata:*const Complex64, odata:*mut Complex64, direction:Direction) -> CError;
+
     fn cufftDestroy(plan:size_t) -> cufftResult_t;
 
 }
@@ -61,6 +66,20 @@ impl PlanComplex1D {
         
     }
 
+    pub fn fwd(&self, time_domain:&CudaVec<Complex64>) -> Result<CudaVec<Complex64>, &'static str> {
+    	if time_domain.len() != self.n as usize { 
+    		Err("Wrong sized input") 
+    	} else {
+	    	let mut freq_domain = CudaVec::new();
+	    	freq_domain.set_capacity(time_domain.len())?;
+	    	unsafe { 
+	    		cufftExecZ2Z(self.handle, time_domain.as_ptr(), freq_domain.as_mut_ptr(), Direction::Forward).ok()?; 
+	    		freq_domain.set_len(time_domain.len())?;
+	    	}
+	    	Ok(freq_domain)		
+    	}
+    }
+
 }
 
 impl std::ops::Drop for PlanComplex1D {
@@ -69,6 +88,16 @@ impl std::ops::Drop for PlanComplex1D {
         unsafe { cufftDestroy(self.handle); }
     }
 
+}
+
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct Complex64(f64, f64);
+
+#[repr(C)]
+pub enum Direction {
+	Forward = -1,
+	Inverse =  1,
 }
 
 #[repr(C)]

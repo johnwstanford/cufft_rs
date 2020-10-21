@@ -36,5 +36,6 @@ fn create_and_resize_vec() {
 	let host_vec1:Vec<f64> = cuda_vec.clone_to_host().unwrap();
 
 	assert_eq!(host_vec0, host_vec1);
+	assert!(PointerAttributes::get(cuda_vec.as_ptr() as *const u8).is_ok());
 
 }
