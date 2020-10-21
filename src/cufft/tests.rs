@@ -1,4 +1,8 @@
 
+use rustfft::FFTplanner;
+use rustfft::num_complex::Complex;
+use rustfft::num_traits::Zero;
+
 use crate::runtime::cuda_vec::CudaVec;
 
 use super::{PlanComplex1D, Complex64 as C64};
@@ -22,6 +26,20 @@ fn single_batch_fft() {
 	let freq_domain_host   = freq_domain_device.clone_to_host().unwrap();
 	assert_eq!(freq_domain_host.len(), n);
 
-	// TODO: check the numerical value of the result
-	// println!("{:?}", freq_domain_host);
+	let freq_domain_cpu:Vec<Complex<f64>> = {
+		let mut time_domain:Vec<Complex<f64>> = time_domain_host.iter().map(|x| Complex{ re: x.0, im: x.1 }).collect();
+
+		let mut freq_domain: Vec<Complex<f64>> = vec![Complex::zero(); n];
+		let mut planner = FFTplanner::new(false);
+		let fft = planner.plan_fft(n);
+
+		// This function uses time_domain as scratch space, so it's to be considered garbage after this call
+		fft.process(&mut time_domain, &mut freq_domain);
+
+		freq_domain
+	};
+
+	// TODO: compare the numerical value of the result
+	println!("{:?}", freq_domain_host);
+	println!("{:?}", freq_domain_cpu);
 }
