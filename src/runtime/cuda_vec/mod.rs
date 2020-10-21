@@ -27,6 +27,10 @@ impl<T: Sized> CudaVec<T> {
 
 	pub fn set_capacity(&mut self, cap:usize) -> Result<(), &'static str> {
 
+		// Whether or not there's new memory to allocate depends on      cap
+		// Whether or not there's       data to     copy depends on self.len
+		// Whether or not there's old memory to     free depends on self.cap
+
 		if cap == self.cap { return Ok(()); } 		// Nothing to do
 
 		if cap > 0 {
@@ -36,12 +40,18 @@ impl<T: Sized> CudaVec<T> {
 			// Allocate new memory
 			let mut new_ptr:usize = 0;
 			let new_byte_count:usize = std::mem::size_of::<T>() * cap;
+
 			unsafe {
 				super::cudaMalloc(&mut new_ptr, new_byte_count).ok()?;
 				eprintln!("Allocated {} bytes in CudaVec(0x{:X})", new_byte_count, new_ptr as usize);
 			}
 
 			if self.len > 0 {
+				// Set the length first because you can truncate a vector by setting its capacity
+				// to a smaller number than the length and if we're doing that, we don't want to 
+				// copy those discarded bytes
+				self.len = std::cmp::min(self.len, cap);
+
 				// We've got old data to copy before we free the old memory
 				unsafe { 
 
@@ -62,7 +72,6 @@ impl<T: Sized> CudaVec<T> {
 
 			self.ptr = new_ptr as *mut T;
 			self.cap = cap;
-			// Length remains unchanged
 
 		} else {
 			// The requested capacity is zero, so there's no need to allocate new memory; just drop the old memory
