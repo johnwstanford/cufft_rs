@@ -50,11 +50,7 @@ impl<T: Sized> CudaVec<T> {
 
 				}
 
-			} else {
-				// There's no old data to copy before we free the old memory.  If the length is zero, the capacity should
-				// always be zero too
-				assert!(self.cap == 0);
-			}
+			} 
 
 			// Whether we copied old data into the new allocation or not, we're ready to free the old allocation, if applicable
 			// Note that `self.cap` is the old capacity and `cap` is the new capacity 
