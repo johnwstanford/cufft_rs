@@ -70,8 +70,7 @@ impl PlanComplex1D {
     	if time_domain.len() != self.n as usize { 
     		Err("Wrong sized input") 
     	} else {
-	    	let mut freq_domain = CudaVec::new();
-	    	freq_domain.set_capacity(time_domain.len())?;
+	    	let mut freq_domain = CudaVec::with_capacity(time_domain.len())?;
 	    	unsafe { 
 	    		cufftExecZ2Z(self.handle, time_domain.as_ptr(), freq_domain.as_mut_ptr(), Direction::Forward).ok()?; 
 	    		freq_domain.set_len(time_domain.len())?;

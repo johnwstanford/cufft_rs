@@ -34,6 +34,18 @@ impl<T: Sized + Clone> CudaVec<T> {
 	//////////////
 	// Functions that behave a little differently from std::vec::Vec
 	//////////////
+	pub fn with_capacity(n:usize) -> Result<Self, &'static str> {
+		let mut ans = Self::new();
+		ans.set_capacity(n)?;
+		Ok(ans)
+	}
+
+	pub fn from_slice(src: &[T]) -> Result<Self, &'static str> {
+		let mut ans = Self::new();
+		ans.copy_from_slice(src)?;
+		Ok(ans)
+	}
+
 	pub fn copy_from_slice(&mut self, src: &[T]) -> Result<(), &'static str> {
 		// This is different from std::vec::Vec in that it will resize this vector
 		// instead of panicking if it's the wrong size and it produces a Result return
