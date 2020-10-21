@@ -1,6 +1,4 @@
 
-use std::alloc::{alloc, Layout};
-
 use libc::size_t;
 
 use super::CudaMemCopyKind;
@@ -13,17 +11,53 @@ mod tests;
 // gets dropped, the host allocator might try to drop its memory, which might result in a seg fault 
 // because the drop function would think it's on the heap, but it's on the CUDA device
 #[derive(Debug)]
-pub struct CudaVec<T: Sized> {
+pub struct CudaVec<T: Sized + Clone> {
 	ptr: *mut T,
 	cap: usize,
 	len: usize
 }
 
-impl<T: Sized> CudaVec<T> {
+impl<T: Sized + Clone> CudaVec<T> {
 
+	//////////////
+	// Functions that behave exactly the same as std::vec::Vec
+	//////////////
 	pub fn new() -> Self {
 		Self{ ptr: 0 as *mut T, cap:0, len:0 }
 	}
+
+	pub fn as_mut_ptr(&self) -> *mut T   { self.ptr }
+	pub fn as_ptr(&self)     -> *const T { self.ptr }
+	pub fn len(&self)        -> usize    { self.len }
+	pub fn capacity(&self)   -> usize    { self.cap }
+
+	//////////////
+	// Functions that behave a little differently from std::vec::Vec
+	//////////////
+	pub fn copy_from_slice(&mut self, src: &[T]) -> Result<(), &'static str> {
+		// This is different from std::vec::Vec in that it will resize this vector
+		// instead of panicking if it's the wrong size and it produces a Result return
+		// type instead of ()
+		self.set_capacity(src.len())?;
+		let src_ptr:*const T = &src[0] as *const T;
+		unsafe {
+			super::cudaMemcpy(self.ptr as *mut u8, src_ptr as *const _, src.len()*std::mem::size_of::<T>(), CudaMemCopyKind::HostToDevice).ok()?;
+		}
+		self.len = src.len();
+
+		Ok(())
+	}	
+
+	pub fn clone_to_host(&self) -> Result<Vec<T>, &'static str> {
+
+		unsafe {
+			let mut ans = vec![ std::mem::zeroed(); self.len];
+			let dst:*mut T = &mut ans[0] as *mut T;
+			super::cudaMemcpy(dst as *mut _, self.ptr as *const u8, self.len*std::mem::size_of::<T>(), CudaMemCopyKind::DeviceToHost).ok()?;
+			Ok(ans)
+		}
+
+	}	
 
 	pub fn set_capacity(&mut self, cap:usize) -> Result<(), &'static str> {
 
@@ -90,22 +124,9 @@ impl<T: Sized> CudaVec<T> {
 		Ok(())
 	}
 
-	/*pub fn to_host(self) -> Box<T> {
-		let layout = Layout::new::<T>();
-		unsafe {
-			let dst:*mut u8 = alloc(layout);
-			eprintln!("Copying from CudaBox(0x{:X}) to Box(0x{:X})", self.ptr as usize, dst as usize);
-			if super::cudaMemcpy(dst, self.ptr as *const u8, std::mem::size_of::<T>(), CudaMemCopyKind::DeviceToHost) != 0 {
-				panic!("Failure to copy memory from device");
-			}
-			Box::from_raw(dst as *mut T)
-		}
-
-	}*/
-
 }
 
-impl<T> std::ops::Drop for CudaVec<T> {
+impl<T: Sized + Clone> std::ops::Drop for CudaVec<T> {
 
 	fn drop(&mut self) {
 		eprintln!("Dropping CudaVec(0x{:X})", self.ptr as usize);
