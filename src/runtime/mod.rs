@@ -1,6 +1,8 @@
 
 use libc::size_t;
 
+use super::CError;
+
 pub mod cuda_box;
 pub mod cuda_vec;
 
@@ -20,9 +22,9 @@ extern {
 	// Use size_t for pointers to device memory because it's simpler and also because it's an extra safeguard against
 	// dereferencing them, even in unsafe blocks
 
-	fn cudaMalloc(ptr:&mut size_t, size:size_t) -> i32;
-	fn cudaMemcpy(dst:*mut u8, src:*const u8, count:size_t, kind:CudaMemCopyKind ) -> i32;
-	fn cudaFree(ptr:size_t) -> i32;
+	fn cudaMalloc(ptr:&mut size_t, size:size_t) -> CError;
+	fn cudaMemcpy(dst:*mut u8, src:*const u8, count:size_t, kind:CudaMemCopyKind ) -> CError;
+	fn cudaFree(ptr:size_t) -> CError;
 
 }
 

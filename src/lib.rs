@@ -6,6 +6,18 @@ pub mod runtime;
 #[cfg(test)]
 mod tests;
 
+#[repr(C)]
+pub struct CError(i32);
+
+impl CError {
+
+	pub fn ok(&self) -> Result<(), &'static str> { match self.0 {
+		0 => Ok(()),
+		_ => Err("Failure in CError")
+	}}
+
+}
+
 #[link(name = "cufft")]
 extern {
 

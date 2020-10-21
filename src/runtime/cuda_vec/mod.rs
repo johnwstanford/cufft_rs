@@ -5,6 +5,9 @@ use libc::size_t;
 
 use super::CudaMemCopyKind;
 
+#[cfg(test)]
+mod tests;
+
 // TODO: think about whether or not we need Unique<T> here instead of *mut T.  Chapter 9 of the
 // Rustnomicon uses it when describing how to implement Vec yourself, but I'm afraid that when Unique
 // gets dropped, the host allocator might try to drop its memory, which might result in a seg fault 
@@ -34,9 +37,7 @@ impl<T: Sized> CudaVec<T> {
 			let mut new_ptr:usize = 0;
 			let new_byte_count:usize = std::mem::size_of::<T>() * cap;
 			unsafe {
-				if super::cudaMalloc(&mut new_ptr, new_byte_count) != 0 {
-					return Err("Failure to allocate memory on device");
-				}
+				super::cudaMalloc(&mut new_ptr, new_byte_count).ok()?;
 				eprintln!("Allocated {} bytes in CudaVec(0x{:X})", new_byte_count, new_ptr as usize);
 			}
 
@@ -45,9 +46,7 @@ impl<T: Sized> CudaVec<T> {
 				unsafe { 
 
 					eprintln!("Copying from CudaVec's old allocation at 0x{:X} to its new allocation at 0x{:X}", self.ptr as usize, new_ptr);
-					if super::cudaMemcpy(new_ptr as *mut u8, self.ptr as *mut u8, std::mem::size_of::<T>() * self.len, CudaMemCopyKind::DeviceToDevice) != 0 {
-						return Err("Failure to copy memory within device");
-					}	
+					super::cudaMemcpy(new_ptr as *mut u8, self.ptr as *mut u8, std::mem::size_of::<T>() * self.len, CudaMemCopyKind::DeviceToDevice).ok()?;	
 
 				}
 

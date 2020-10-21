@@ -2,8 +2,8 @@
 #[test]
 fn basic_fft() {
 
-	let plan = super::PlanComplex1D::new(16, 1).unwrap();
+	let _plan = super::PlanComplex1D::new(16, 1).unwrap();
 
-	println!("{:?}", plan);
+	// println!("{:?}", plan);
 
 }
