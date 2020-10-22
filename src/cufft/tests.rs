@@ -39,7 +39,11 @@ fn single_batch_fft() {
 		freq_domain
 	};
 
-	// TODO: compare the numerical value of the result
-	println!("{:?}", freq_domain_host);
-	println!("{:?}", freq_domain_cpu);
+	// Compare the numerical values from the CPU and GPU
+	for i in 0..n {
+		assert!( approx_eq!(f64, freq_domain_host[i].0, freq_domain_cpu[i].re, ulps = 2) );
+		assert!( approx_eq!(f64, freq_domain_host[i].1, freq_domain_cpu[i].im, ulps = 2) );
+	}
+
+
 }
