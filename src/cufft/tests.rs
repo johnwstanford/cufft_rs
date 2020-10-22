@@ -1,4 +1,6 @@
 
+use rand::{thread_rng, Rng};
+
 use rustfft::FFTplanner;
 use rustfft::num_complex::Complex;
 use rustfft::num_traits::Zero;
@@ -11,10 +13,11 @@ use super::{PlanComplex1D, Complex64 as C64};
 fn single_batch_fft() {
 
 	let n:usize = 4;
+	let mut rng = thread_rng();
 
 	let plan = PlanComplex1D::new(n as i32, 1).unwrap();
 
-	let time_domain_host = vec![C64(1.0, 0.0), C64(2.2, 0.0), C64(3.0, 0.0), C64(4.0, 0.0)];
+	let time_domain_host:Vec<C64> = (0..n).map(|_| C64(rng.gen_range(-100.0, 100.0), rng.gen_range(-100.0, 100.0))).collect();
 	assert_eq!(time_domain_host.len(), n);	
 
 	let time_domain_device = CudaVec::from_slice(&time_domain_host).unwrap();
@@ -44,6 +47,5 @@ fn single_batch_fft() {
 		assert!( approx_eq!(f64, freq_domain_host[i].0, freq_domain_cpu[i].re, ulps = 2) );
 		assert!( approx_eq!(f64, freq_domain_host[i].1, freq_domain_cpu[i].im, ulps = 2) );
 	}
-
 
 }
