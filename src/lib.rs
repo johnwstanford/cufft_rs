@@ -1,7 +1,7 @@
 
 #[cfg(test)]
 #[macro_use]
-extern crate float_cmp;
+extern crate more_asserts;
 
 pub mod runtime;
 pub mod cufft;
