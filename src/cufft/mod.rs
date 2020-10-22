@@ -13,22 +13,23 @@ extern {
     fn cufftPlanMany(plan:&mut size_t, rank:i32, n:&i32, inembed:&i32, istride:i32, idist:i32,
         onembed:&i32, ostride:i32, odist:i32, fft_type:cufftType_t, batch:i32) -> cufftResult_t;
 
-	fn cufftExecZ2Z(plan:size_t, idata:*const Complex<f64>, odata:*mut Complex<f64>, direction:Direction) -> CError;
+    // TODO: Make these pointers a *const Complex<f64> and *mut Complex<f64> then use the type parameter on PlanComplex1D
+    // to pick the right function
+	fn cufftExecZ2Z(plan:size_t, idata:*const u8, odata:*mut u8, direction:Direction) -> CError;
 
     fn cufftDestroy(plan:size_t) -> cufftResult_t;
 
 }
 
 #[derive(Debug)]
-pub struct PlanComplex1D {
+pub struct PlanComplex1D<T: Clone + Default> {
     handle:usize,
     n:i32,          // --- Size of the Fourier transform
     batch_count:i32,
-    buffer:CudaVec<Complex<f64>>
+    buffer:CudaVec<Complex<T>>
 }
 
-// 131075
-impl PlanComplex1D {
+impl<T: Clone + Default> PlanComplex1D<T> {
 
     pub fn new(n:i32, batch_count:i32) -> Result<Self, &'static str> {
         if batch_count != 1 { return Err("TODO: implement batch counts other than 1"); }
@@ -44,7 +45,7 @@ impl PlanComplex1D {
         let inembed:[i32; 1] = [0];                  // --- Input size with pitch (ignored for 1D transforms)
         let onembed:[i32; 1] = [0];                  // --- Output size with pitch (ignored for 1D transforms)
 
-    	let buffer = CudaVec::from_slice(&vec![Complex(0.0, 0.0); n as usize])?;
+    	let buffer = CudaVec::from_slice(&vec![Complex(T::default(), T::default()); n as usize])?;
 
         match unsafe { cufftPlanMany(&mut handle, rank, &n, 
                 &inembed[0], istride, n,
@@ -56,18 +57,18 @@ impl PlanComplex1D {
         
     }
 
-    pub fn fwd(&mut self, time_domain:&CudaVec<Complex<f64>>) -> Result<Vec<Complex<f64>>, &'static str> {
+    pub fn fwd(&mut self, time_domain:&CudaVec<Complex<T>>) -> Result<Vec<Complex<T>>, &'static str> {
     	if time_domain.len() != self.n as usize { 
     		Err("Wrong sized input") 
     	} else {
-	    	unsafe { cufftExecZ2Z(self.handle, time_domain.as_ptr(), self.buffer.as_mut_ptr(), Direction::Forward).ok()?; }
+	    	unsafe { cufftExecZ2Z(self.handle, time_domain.as_ptr() as *const _, self.buffer.as_mut_ptr() as *mut _, Direction::Forward).ok()?; }
 	    	Ok(self.buffer.clone_to_host()?)		
     	}
     }
 
 }
 
-impl std::ops::Drop for PlanComplex1D {
+impl<T: Clone + Default> std::ops::Drop for PlanComplex1D<T> {
 
     fn drop(&mut self) {
         unsafe { cufftDestroy(self.handle); }
