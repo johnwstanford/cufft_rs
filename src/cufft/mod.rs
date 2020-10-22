@@ -13,7 +13,7 @@ extern {
     fn cufftPlanMany(plan:&mut size_t, rank:i32, n:&i32, inembed:&i32, istride:i32, idist:i32,
         onembed:&i32, ostride:i32, odist:i32, fft_type:cufftType_t, batch:i32) -> cufftResult_t;
 
-	fn cufftExecZ2Z(plan:size_t, idata:*const Complex64, odata:*mut Complex64, direction:Direction) -> CError;
+	fn cufftExecZ2Z(plan:size_t, idata:*const Complex<f64>, odata:*mut Complex<f64>, direction:Direction) -> CError;
 
     fn cufftDestroy(plan:size_t) -> cufftResult_t;
 
@@ -24,7 +24,7 @@ pub struct PlanComplex1D {
     handle:usize,
     n:i32,          // --- Size of the Fourier transform
     batch_count:i32,
-    buffer:CudaVec<Complex64>
+    buffer:CudaVec<Complex<f64>>
 }
 
 // 131075
@@ -44,7 +44,7 @@ impl PlanComplex1D {
         let inembed:[i32; 1] = [0];                  // --- Input size with pitch (ignored for 1D transforms)
         let onembed:[i32; 1] = [0];                  // --- Output size with pitch (ignored for 1D transforms)
 
-    	let buffer = CudaVec::from_slice(&vec![Complex64(0.0, 0.0); n as usize])?;
+    	let buffer = CudaVec::from_slice(&vec![Complex(0.0, 0.0); n as usize])?;
 
         match unsafe { cufftPlanMany(&mut handle, rank, &n, 
                 &inembed[0], istride, n,
@@ -56,7 +56,7 @@ impl PlanComplex1D {
         
     }
 
-    pub fn fwd(&mut self, time_domain:&CudaVec<Complex64>) -> Result<Vec<Complex64>, &'static str> {
+    pub fn fwd(&mut self, time_domain:&CudaVec<Complex<f64>>) -> Result<Vec<Complex<f64>>, &'static str> {
     	if time_domain.len() != self.n as usize { 
     		Err("Wrong sized input") 
     	} else {
@@ -77,7 +77,7 @@ impl std::ops::Drop for PlanComplex1D {
 
 #[repr(C)]
 #[derive(Clone, Debug)]
-pub struct Complex64(f64, f64);
+pub struct Complex<T>(T, T);
 
 #[repr(C)]
 pub enum Direction {

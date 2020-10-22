@@ -10,7 +10,7 @@ use rustfft::num_traits::Zero;
 
 use crate::runtime::cuda_vec::CudaVec;
 
-use super::{PlanComplex1D, Complex64 as C64};
+use super::{PlanComplex1D, Complex as CudaComplex};
 
 const NUM_ITERS:usize = 10;
 
@@ -30,7 +30,7 @@ fn single_batch_fft() {
 	let mut ulp_diff:Vec<f64> = vec![];
 
 	for _ in 0..NUM_ITERS {
-		let time_domain_host:Vec<C64> = (0..n).map(|_| C64(rng.gen_range(-100.0, 100.0), rng.gen_range(-100.0, 100.0))).collect();
+		let time_domain_host:Vec<CudaComplex<f64>> = (0..n).map(|_| CudaComplex(rng.gen_range(-100.0, 100.0), rng.gen_range(-100.0, 100.0))).collect();
 		assert_eq!(time_domain_host.len(), n);	
 
 		let time_domain_device = CudaVec::from_slice(&time_domain_host).unwrap();
