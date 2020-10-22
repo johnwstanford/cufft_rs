@@ -1,6 +1,8 @@
 
 use libc::size_t;
 
+use rustfft::num_complex::Complex;
+
 use crate::CError;
 use crate::runtime::cuda_vec::CudaVec;
 
@@ -13,72 +15,139 @@ extern {
     fn cufftPlanMany(plan:&mut size_t, rank:i32, n:&i32, inembed:&i32, istride:i32, idist:i32,
         onembed:&i32, ostride:i32, odist:i32, fft_type:cufftType_t, batch:i32) -> cufftResult_t;
 
-    // TODO: Make these pointers a *const Complex<f64> and *mut Complex<f64> then use the type parameter on PlanComplex1D
-    // to pick the right function
-	fn cufftExecZ2Z(plan:size_t, idata:*const u8, odata:*mut u8, direction:Direction) -> CError;
+	fn cufftExecZ2Z(plan:size_t, idata:*const Complex<f64>, odata:*mut Complex<f64>, direction:Direction) -> CError;
+	fn cufftExecC2C(plan:size_t, idata:*const Complex<f32>, odata:*mut Complex<f32>, direction:Direction) -> CError;
 
     fn cufftDestroy(plan:size_t) -> cufftResult_t;
 
 }
 
 #[derive(Debug)]
-pub struct PlanComplex1D<T: Clone + Default> {
+pub struct Plan<T: Clone + Default, U: Clone + Default> {
     handle:usize,
     n:i32,          // --- Size of the Fourier transform
     batch_count:i32,
-    buffer:CudaVec<Complex<T>>
+    in_buffer:CudaVec<T>,
+    out_buffer:CudaVec<U>,
 }
 
-impl<T: Clone + Default> PlanComplex1D<T> {
+impl<T: Clone + Default, U: Clone + Default> Plan<T, U> {
 
     pub fn new(n:i32, batch_count:i32) -> Result<Self, &'static str> {
         if batch_count != 1 { return Err("TODO: implement batch counts other than 1"); }
 
-        let mut handle:usize = 0;
+        let handle:usize = 0;
 
-        let rank:i32 = 1; // --- 1D FFTs
+    	let in_buffer  = CudaVec::from_slice(&vec![T::default(); n as usize])?;
+    	let out_buffer = CudaVec::from_slice(&vec![U::default(); n as usize])?;
 
-        // --- Distance between two successive input/output elements
-        let istride:i32 = 1;
-        let ostride:i32 = 1;
-        
-        let inembed:[i32; 1] = [0];                  // --- Input size with pitch (ignored for 1D transforms)
-        let onembed:[i32; 1] = [0];                  // --- Output size with pitch (ignored for 1D transforms)
+		Ok(Plan{ handle, n, batch_count, in_buffer, out_buffer })
 
-    	let buffer = CudaVec::from_slice(&vec![Complex(T::default(), T::default()); n as usize])?;
-
-        match unsafe { cufftPlanMany(&mut handle, rank, &n, 
-                &inembed[0], istride, n,
-                &onembed[0], ostride, n, 
-                cufftType_t::Z2Z, batch_count) } {
-            cufftResult_t::Success => Ok(PlanComplex1D{ handle, n, batch_count, buffer }),
-            _                      => Err("Unable to create FFT plan")
-        }
-        
     }
 
-    pub fn fwd(&mut self, time_domain:&CudaVec<Complex<T>>) -> Result<Vec<Complex<T>>, &'static str> {
-    	if time_domain.len() != self.n as usize { 
-    		Err("Wrong sized input") 
-    	} else {
-	    	unsafe { cufftExecZ2Z(self.handle, time_domain.as_ptr() as *const _, self.buffer.as_mut_ptr() as *mut _, Direction::Forward).ok()?; }
-	    	Ok(self.buffer.clone_to_host()?)		
+    pub fn is_initialized(&self) -> bool { self.handle != 0 }
+
+}
+
+impl<T: Clone + Default, U: Clone + Default> std::ops::Drop for Plan<T, U> {
+
+    fn drop(&mut self) {
+    	if self.is_initialized() {
+	        unsafe { cufftDestroy(self.handle); }
     	}
     }
 
 }
 
-impl<T: Clone + Default> std::ops::Drop for PlanComplex1D<T> {
+// TODO: make these more advanced features available
+const RANK:i32 = 1; 				// --- 1D FFTs
+const I_STRIDE:i32 = 1;				// --- Distance between two successive input/output elements
+const O_STRIDE:i32 = 1;
+const I_N_EMBED:[i32; 1] = [0];		// --- Input size with pitch (ignored for 1D transforms)
+const O_N_EMBED:[i32; 1] = [0];     // --- Output size with pitch (ignored for 1D transforms)
 
-    fn drop(&mut self) {
-        unsafe { cufftDestroy(self.handle); }
-    }
+trait InitCudaFFT {
+
+	fn init(&mut self) -> Result<(), &'static str>;
 
 }
 
-#[repr(C)]
-#[derive(Clone, Debug)]
-pub struct Complex<T>(T, T);
+impl InitCudaFFT for Plan<Complex<f64>, Complex<f64>> {
+	
+	fn init(&mut self) -> Result<(), &'static str> {
+
+		if self.is_initialized() { return Err("Plan already initialized"); }
+        
+        match unsafe { cufftPlanMany(&mut self.handle, RANK, &self.n, 
+                &I_N_EMBED[0], I_STRIDE, self.n,
+                &O_N_EMBED[0], O_STRIDE, self.n, 
+                cufftType_t::Z2Z, self.batch_count) } {
+            cufftResult_t::Success => Ok(()),
+            _                      => Err("Unable to initialize FFT plan")
+        }
+
+	}
+
+}
+
+impl InitCudaFFT for Plan<Complex<f32>, Complex<f32>> {
+	
+	fn init(&mut self) -> Result<(), &'static str> {
+
+		if self.is_initialized() { return Err("Plan already initialized"); }
+        
+        match unsafe { cufftPlanMany(&mut self.handle, RANK, &self.n, 
+                &I_N_EMBED[0], I_STRIDE, self.n,
+                &O_N_EMBED[0], O_STRIDE, self.n, 
+                cufftType_t::C2C, self.batch_count) } {
+            cufftResult_t::Success => Ok(()),
+            _                      => Err("Unable to initialize FFT plan")
+        }
+
+	}
+
+}
+
+pub trait ExecCudaFFT<T: Clone + Default, U: Clone + Default> {
+
+	// Take an immutable reference to self, then use the given plan to execute a forward FFT
+	fn fwd(&self, plan:&mut Plan<T, U>) -> Result<Vec<U>, &'static str>;
+
+}
+
+impl ExecCudaFFT<Complex<f64>, Complex<f64>> for &[Complex<f64>] {
+
+	fn fwd(&self, plan:&mut Plan<Complex<f64>, Complex<f64>>) -> Result<Vec<Complex<f64>>, &'static str> {
+
+		if !plan.is_initialized() { plan.init()?; }
+
+    	if self.len() != plan.n as usize { 
+    		Err("Wrong sized input") 
+    	} else {
+			plan.in_buffer.copy_from_slice(&self)?;
+	    	unsafe { cufftExecZ2Z(plan.handle, plan.in_buffer.as_ptr() as *const _, plan.out_buffer.as_mut_ptr() as *mut _, Direction::Forward).ok()?; }
+	    	Ok(plan.out_buffer.clone_to_host()?)		
+    	}
+	}
+
+}
+
+impl ExecCudaFFT<Complex<f32>, Complex<f32>> for &[Complex<f32>] {
+
+	fn fwd(&self, plan:&mut Plan<Complex<f32>, Complex<f32>>) -> Result<Vec<Complex<f32>>, &'static str> {
+
+		if !plan.is_initialized() { plan.init()?; }
+
+    	if self.len() != plan.n as usize { 
+    		Err("Wrong sized input") 
+    	} else {
+			plan.in_buffer.copy_from_slice(&self)?;
+	    	unsafe { cufftExecC2C(plan.handle, plan.in_buffer.as_ptr() as *const _, plan.out_buffer.as_mut_ptr() as *mut _, Direction::Forward).ok()?; }
+	    	Ok(plan.out_buffer.clone_to_host()?)		
+    	}
+	}
+
+}
 
 #[repr(C)]
 pub enum Direction {

@@ -11,9 +11,9 @@ clap = "2.33.0"
 colored = "1.8.0"
 libc = "0.2.0"
 more-asserts = "0.2.1"
+rustfft = "3.0.0"
 
 [dev-dependencies]
 ieee754 = "0.2.6"
 float-cmp = "0.8.0"
 rand = "0.7.3"
-rustfft = "3.0.0"
