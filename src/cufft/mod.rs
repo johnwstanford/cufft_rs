@@ -23,7 +23,8 @@ extern {
 pub struct PlanComplex1D {
     handle:usize,
     n:i32,          // --- Size of the Fourier transform
-    batch_count:i32
+    batch_count:i32,
+    buffer:CudaVec<Complex64>
 }
 
 // 131075
@@ -43,26 +44,24 @@ impl PlanComplex1D {
         let inembed:[i32; 1] = [0];                  // --- Input size with pitch (ignored for 1D transforms)
         let onembed:[i32; 1] = [0];                  // --- Output size with pitch (ignored for 1D transforms)
 
+    	let buffer = CudaVec::from_slice(&vec![Complex64(0.0, 0.0); n as usize])?;
+
         match unsafe { cufftPlanMany(&mut handle, rank, &n, 
                 &inembed[0], istride, n,
                 &onembed[0], ostride, n, 
                 cufftType_t::Z2Z, batch_count) } {
-            cufftResult_t::Success => Ok(PlanComplex1D{ handle, n, batch_count }),
+            cufftResult_t::Success => Ok(PlanComplex1D{ handle, n, batch_count, buffer }),
             _                      => Err("Unable to create FFT plan")
         }
         
     }
 
-    pub fn fwd(&self, time_domain:&CudaVec<Complex64>) -> Result<CudaVec<Complex64>, &'static str> {
+    pub fn fwd(&mut self, time_domain:&CudaVec<Complex64>) -> Result<Vec<Complex64>, &'static str> {
     	if time_domain.len() != self.n as usize { 
     		Err("Wrong sized input") 
     	} else {
-	    	let mut freq_domain = CudaVec::with_capacity(time_domain.len())?;
-	    	unsafe { 
-	    		cufftExecZ2Z(self.handle, time_domain.as_ptr(), freq_domain.as_mut_ptr(), Direction::Forward).ok()?; 
-	    		freq_domain.set_len(time_domain.len())?;
-	    	}
-	    	Ok(freq_domain)		
+	    	unsafe { cufftExecZ2Z(self.handle, time_domain.as_ptr(), self.buffer.as_mut_ptr(), Direction::Forward).ok()?; }
+	    	Ok(self.buffer.clone_to_host()?)		
     	}
     }
 

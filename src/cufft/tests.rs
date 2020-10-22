@@ -25,7 +25,7 @@ fn single_batch_fft() {
 	let n:usize = 2usize.pow(16);
 	let mut rng = thread_rng();
 
-	let plan = PlanComplex1D::new(n as i32, 1).unwrap();
+	let mut plan = PlanComplex1D::new(n as i32, 1).unwrap();
 
 	let mut ulp_diff:Vec<f64> = vec![];
 
@@ -36,10 +36,7 @@ fn single_batch_fft() {
 		let time_domain_device = CudaVec::from_slice(&time_domain_host).unwrap();
 		assert_eq!(time_domain_device.len(), n);
 
-		let freq_domain_device = plan.fwd(&time_domain_device).unwrap();
-		assert_eq!(freq_domain_device.len(), n);
-
-		let freq_domain_host   = freq_domain_device.clone_to_host().unwrap();
+		let freq_domain_host = plan.fwd(&time_domain_device).unwrap();
 		assert_eq!(freq_domain_host.len(), n);
 
 		let freq_domain_cpu:Vec<Complex<f64>> = {
